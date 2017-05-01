@@ -21,7 +21,6 @@ use encode_unicode::CharExt;
 
 use core::fmt::Display;
 
-#[cfg(debug_assertions)]
 const NS: &'static str = "not support";
 
 #[inline(never)]
