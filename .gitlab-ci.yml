@@ -1,9 +1,8 @@
 build:
     image: registry.gitlab.com/robigalia/runner:latest
     script: 
-        - "xargo build --target i686-sel4-unknown --no-default-features"
-        - "xargo build --target arm-sel4-gnueabi --no-default-features"
-        - "xargo build --target arm-sel4-gnueabihf --no-default-features"
+        - "xargo build --target i686-sel4-robigalia --no-default-features"
+        - "xargo build --target arm-sel4-robigalia --no-default-features"
         - "cargo test"
         - "cargo test --release"
 verify_signatures:

@@ -9,7 +9,7 @@ name = "ssmarshal"
 version = "0.0.1"
 authors = ["Corey Richardson <corey@octayn.net>"]
 description = "Stupid simple value-only marshaling using serde"
-documentation = "https://doc.robigalia.org/ssmarshal"
+documentation = "https://docs.rs/ssmarshal"
 repository = "https://gitlab.com/robigalia/ssmarshal"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
@@ -19,11 +19,11 @@ default = ["std"]
 std = ["serde/std"]
 
 [dependencies]
-serde = { version = "0.8", default-features = false }
+serde = { version = "1.0", default-features = false }
 # ugh. FIXME eventually.
 encode_unicode = { version = "0.2", default-features = false, features = ["no_std"] }
 
 [dev-dependencies]
 quickcheck = "0.4"
 quickcheck_macros = "0.4"
-serde_derive = "0.8"
+serde_derive = "1.0"

@@ -15,9 +15,23 @@ extern crate encode_unicode;
 use core::intrinsics::transmute;
 
 use serde::{Serialize, Deserialize};
-use serde::de::{EnumVisitor, Visitor};
-use serde::de::value::ValueDeserializer;
+use serde::de::{Visitor, DeserializeSeed, DeserializeOwned, IntoDeserializer};
+//use serde::de::value::ValueDeserializer;
 use encode_unicode::CharExt;
+
+use core::fmt::Display;
+
+#[cfg(debug_assertions)]
+const NS: &'static str = "not support";
+
+#[inline(never)]
+#[cold]
+fn ns<T>() -> Result<T, Error> {
+    if cfg!(debug_assertions) {
+        panic!(NS)
+    }
+    Err(Error::NotSupported)
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -35,7 +49,7 @@ pub enum Error {
 
 
 impl core::fmt::Display for Error {
-    #[inline] fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         #[cfg(feature = "std")]
         use std::error::Error;
         #[cfg(not(feature = "std"))]
@@ -50,43 +64,35 @@ impl core::fmt::Display for Error {
 
 #[cfg(not(feature = "std"))]
 impl serde::de::Error for Error {
-    #[inline] fn custom<T: Into<&'static str>>(msg: T) -> Error {
+     fn custom<T: Into<&'static str>>(msg: T) -> Error {
         Error::Custom(msg.into())
-    }
-
-    #[inline] fn end_of_stream() -> Error {
-        Error::EndOfStream
     }
 }
 
 #[cfg(not(feature = "std"))]
 impl serde::ser::Error for Error {
-    #[inline] fn custom<T: Into<&'static str>>(msg: T) -> Error {
-        Error::Custom(msg.into())
+     fn custom<T: Display>(msg: T) -> Error {
+        Error::Custom(format!("{}", msg))
     }
 }
 
 #[cfg(feature = "std")]
 impl serde::de::Error for Error {
-    #[inline] fn custom<T: Into<String>>(msg: T) -> Error {
-        Error::Custom(msg.into())
-    }
-
-    #[inline] fn end_of_stream() -> Error {
-        Error::EndOfStream
+     fn custom<T: Display>(msg: T) -> Error {
+        Error::Custom(format!("{}", msg))
     }
 }
 
 #[cfg(feature = "std")]
 impl serde::ser::Error for Error {
-    #[inline] fn custom<T: Into<String>>(msg: T) -> Error {
-        Error::Custom(msg.into())
+     fn custom<T: Display>(msg: T) -> Error {
+        Error::Custom(format!("{}", msg))
     }
 }
 
 #[cfg(not(feature = "std"))]
 impl serde::error::Error for Error {
-    #[inline] fn description(&self) -> &str {
+     fn description(&self) -> &str {
         match self {
             &Error::EndOfStream => "end of stream reached but more data was needed",
             &Error::InvalidRepresentation => "invalid representation for a value",
@@ -101,7 +107,7 @@ impl serde::error::Error for Error {
 
 #[cfg(feature = "std")]
 impl std::error::Error for Error {
-    #[inline] fn description(&self) -> &str {
+     fn description(&self) -> &str {
         match self {
             &Error::EndOfStream => "end of stream reached but more data was needed",
             &Error::InvalidRepresentation => "invalid representation for a value",
@@ -118,13 +124,15 @@ impl std::error::Error for Error {
 pub fn serialize<T: Serialize>(buf: &mut [u8], val: &T) -> SerializeResult<usize> {
     let mut serializer = Serializer { buf: buf, idx: 0 };
     T::serialize(val, &mut serializer)?;
+    debug_assert!(serializer.idx <= core::mem::size_of::<T>(), "{} <=? {}", serializer.idx, core::mem::size_of::<T>());
     Ok(serializer.idx)
 }
 
 /// Deserialize a value from a buffer. Returns the number of bytes used.
-pub fn deserialize<T: Deserialize>(buf: &[u8]) -> SerializeResult<(T, usize)> {
+pub fn deserialize<T: DeserializeOwned>(buf: &[u8]) -> SerializeResult<(T, usize)> {
     let mut deserializer = Deserializer { buf: buf, idx: 0 };
     let val = T::deserialize(&mut deserializer)?;
+    debug_assert!(deserializer.idx <= core::mem::size_of::<T>());
     Ok((val, deserializer.idx))
 }
 
@@ -134,16 +142,19 @@ struct Serializer<'a> {
 }
 
 impl<'a> Serializer<'a> {
-    #[inline] fn check_bounds(&self, len: usize) -> Result<(), Error> {
+    #[inline]
+     fn check_bounds(&self, len: usize) -> Result<(), Error> {
         if let Some(val) = self.idx.checked_add(len) {
             if val <= self.buf.len() {
                 return Ok(());
             }
         }
+        debug_assert!(false, "ran out of space serializing value; fix your buffer size");
         Err(Error::EndOfStream)
     }
 
-    #[inline] fn write_u8(&mut self, val: u8) -> Result<(), Error> {
+    #[inline]
+     fn write_u8(&mut self, val: u8) -> Result<(), Error> {
         self.check_bounds(1)?;
         unsafe {
             *self.buf.get_unchecked_mut(self.idx) = val;
@@ -152,7 +163,8 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
-    #[inline] fn write_u16(&mut self, val: u16) -> Result<(), Error> {
+    #[inline]
+     fn write_u16(&mut self, val: u16) -> Result<(), Error> {
         self.check_bounds(2)?;
         unsafe {
             *self.buf.get_unchecked_mut(self.idx) = (val & 0xFF) as u8;
@@ -162,7 +174,8 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
-    #[inline] fn write_u32(&mut self, val: u32) -> Result<(), Error> {
+    #[inline]
+     fn write_u32(&mut self, val: u32) -> Result<(), Error> {
         self.check_bounds(4)?;
         unsafe {
             *self.buf.get_unchecked_mut(self.idx) = (val & 0xFF) as u8;
@@ -174,7 +187,8 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
-    #[inline] fn write_u64(&mut self, val: u64) -> Result<(), Error> {
+    #[inline]
+     fn write_u64(&mut self, val: u64) -> Result<(), Error> {
         self.check_bounds(8)?;
         unsafe { 
             *self.buf.get_unchecked_mut(self.idx) = (val & 0xFF) as u8;
@@ -190,261 +204,282 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
-    #[inline] fn write_slice(&mut self, slice: &[u8]) -> Result<(), Error> {
-        self.check_bounds(slice.len())?;
-        self.buf[self.idx..self.idx + slice.len()].copy_from_slice(slice);
-        self.idx += slice.len();
-        Ok(())
-    }
-
-    #[inline] fn write_usize(&mut self, val: usize) -> Result<(), Error> {
+    #[inline]
+     fn write_usize(&mut self, val: usize) -> Result<(), Error> {
         self.write_u64(val as u64)
     }
 }
 
 type SerializeResult<T> = Result<T, Error>;
 
-impl<'a> serde::Serializer for Serializer<'a> {
+impl<'b, 'a: 'b> serde::Serializer for &'b mut Serializer<'a> {
+    type Ok = ();
     type Error = Error;
-    type SeqState = ();
-    type TupleState = ();
-    type TupleStructState = ();
-    type TupleVariantState = ();
-    type MapState = ();
-    type StructState = ();
-    type StructVariantState = ();
+    type SerializeSeq = Self;
+    type SerializeTuple = Self;
+    type SerializeTupleStruct = Self;
+    type SerializeTupleVariant = Self;
+    type SerializeMap = serde::ser::Impossible<(), Error>;
+    type SerializeStruct = Self;
+    type SerializeStructVariant = Self;
 
-    #[inline] fn serialize_unit(&mut self) -> SerializeResult<()> {
-        Ok(())
-    }
 
-    #[inline] fn serialize_unit_struct(&mut self, _: &'static str) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_bool(&mut self, v: bool) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_bool(self, v: bool) -> SerializeResult<()> {
         self.write_u8(if v { 1 } else { 0 })
     }
 
-    #[inline] fn serialize_u8(&mut self, v: u8) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_u8(self, v: u8) -> SerializeResult<()> {
         self.write_u8(v)
     }
 
-    #[inline] fn serialize_u16(&mut self, v: u16) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_u16(self, v: u16) -> SerializeResult<()> {
         self.write_u16(v)
     }
 
-    #[inline] fn serialize_u32(&mut self, v: u32) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_u32(self, v: u32) -> SerializeResult<()> {
         self.write_u32(v)
     }
 
-    #[inline] fn serialize_u64(&mut self, v: u64) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_u64(self, v: u64) -> SerializeResult<()> {
         self.write_u64(v)
     }
 
-    #[inline] fn serialize_usize(&mut self, v: usize) -> SerializeResult<()> {
-        self.serialize_u64(v as u64)
-    }
-
-    #[inline] fn serialize_i8(&mut self, v: i8) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_i8(self, v: i8) -> SerializeResult<()> {
         self.write_u8(v as u8)
     }
 
-    #[inline] fn serialize_i16(&mut self, v: i16) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_i16(self, v: i16) -> SerializeResult<()> {
         self.write_u16(v as u16)
     }
 
-    #[inline] fn serialize_i32(&mut self, v: i32) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_i32(self, v: i32) -> SerializeResult<()> {
         self.write_u32(v as u32)
     }
 
-    #[inline] fn serialize_i64(&mut self, v: i64) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_i64(self, v: i64) -> SerializeResult<()> {
         self.write_u64(v as u64)
     }
 
-    #[inline] fn serialize_isize(&mut self, v: isize) -> SerializeResult<()> {
-        self.serialize_i64(v as i64)
-    }
-
-    #[inline] fn serialize_f32(&mut self, v: f32) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_f32(self, v: f32) -> SerializeResult<()> {
         self.write_u32(unsafe { transmute(v) })
     }
 
-    #[inline] fn serialize_f64(&mut self, v: f64) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_f64(self, v: f64) -> SerializeResult<()> {
         self.write_u64(unsafe { transmute(v) })
     }
 
-    #[inline] fn serialize_str(&mut self, v: &str) -> SerializeResult<()> {
-        self.serialize_usize(v.len())?;
-        self.write_slice(v.as_bytes())
+     fn serialize_str(self, _: &str) -> SerializeResult<()> {
+        ns()
     }
 
-    #[inline] fn serialize_char(&mut self, c: char) -> SerializeResult<()> {
+     fn serialize_char(self, c: char) -> SerializeResult<()> {
         self.check_bounds(c.len_utf8())?;
         self.idx += c.to_utf8_slice(&mut self.buf[self.idx..]);
         Ok(())
     }
 
-    #[inline] fn serialize_bytes(&mut self, v: &[u8]) -> SerializeResult<()> {
-        self.serialize_usize(v.len())?;
-        self.write_slice(v)
+     fn serialize_bytes(self, _: &[u8]) -> SerializeResult<()> {
+        ns()
     }
 
-    #[inline] fn serialize_none(&mut self) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_none(self) -> SerializeResult<()> {
         self.write_u8(0)
     }
 
-    #[inline] fn serialize_some<T: Serialize>(&mut self, v: T) -> SerializeResult<()> {
+     fn serialize_some<T: Serialize + ?Sized>(self, v: &T) -> SerializeResult<()> {
         self.write_u8(1)?;
         v.serialize(self)
     }
 
-    #[inline] fn serialize_seq(&mut self, len: Option<usize>) -> SerializeResult<()> {
-        match len {
-            Some(l) => self.serialize_usize(l),
-            None => Err(Error::ApplicationError("serialize_seq needs a size")),
-        }
-    }
-
-    #[inline] fn serialize_seq_elt<V: Serialize>(&mut self, _: &mut (), value: V) -> SerializeResult<()> {
-        value.serialize(self)
-    }
-
-    #[inline] fn serialize_seq_end(&mut self, _: ()) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_unit(self) -> SerializeResult<()> {
         Ok(())
     }
 
-    #[inline] fn serialize_seq_fixed_size(&mut self, _len: usize) -> SerializeResult<()> {
+    #[inline]
+     fn serialize_unit_struct(self, _: &'static str) -> SerializeResult<()> {
         Ok(())
     }
 
-    #[inline] fn serialize_tuple(&mut self, _len: usize) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_tuple_elt<V: Serialize>(&mut self, _: &mut (), value: V) -> SerializeResult<()> {
-        value.serialize(self)
-    }
-
-    #[inline] fn serialize_tuple_end(&mut self, _: ()) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_tuple_struct(&mut self, _name: &'static str, _len: usize) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_tuple_struct_elt<V: Serialize>(&mut self, _: &mut (), value: V) -> SerializeResult<()> {
-        value.serialize(self)
-    }
-
-    #[inline] fn serialize_tuple_struct_end(&mut self, _: ()) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_tuple_variant(&mut self,
-                               _name: &'static str,
-                               variant_index: usize,
-                               _variant: &'static str,
-                               _len: usize)
-                               -> SerializeResult<()> {
-        // FIXME: once serde 0.9 is out
+    #[inline]
+     fn serialize_unit_variant(self,
+                              _name: &'static str,
+                              variant_index: u32,
+                              _variant: &'static str)
+                              -> SerializeResult<()> {
         if variant_index > 255 {
-            panic!("Can't encode enum with more than 256 variants!");
+            debug_assert!(false, "too many enum variants: {}", _name);
+            return Err(Error::TooManyVariants)
         }
         self.write_u8(variant_index as u8)
     }
 
-    #[inline] fn serialize_tuple_variant_elt<V: Serialize>(&mut self, _: &mut (), value: V) -> SerializeResult<()> {
+     fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _name: &'static str, value: &T) -> SerializeResult<()> {
         value.serialize(self)
     }
 
-    #[inline] fn serialize_tuple_variant_end(&mut self, _: ()) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_map(&mut self, _len: Option<usize>) -> SerializeResult<()> {
-        Err(Error::NotSupported)
-    }
-
-    #[inline] fn serialize_map_key<K: Serialize>(&mut self, _: &mut (), _key: K) -> SerializeResult<()> {
-        Err(Error::NotSupported)
-    }
-
-    #[inline] fn serialize_map_value<V: Serialize>(&mut self, _: &mut (), _value: V) -> SerializeResult<()> {
-        Err(Error::NotSupported)
-    }
-
-    #[inline] fn serialize_map_end(&mut self, _: ()) -> SerializeResult<()> {
-        Err(Error::NotSupported)
-    }
-
-    #[inline] fn serialize_struct(&mut self, _name: &'static str, _len: usize) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_struct_elt<V: Serialize>(&mut self,
-                               _: &mut (),
-                               _key: &'static str,
-                               value: V)
-                               -> SerializeResult<()> {
-        value.serialize(self)
-    }
-
-    #[inline] fn serialize_struct_end(&mut self, _: ()) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_struct_variant(&mut self,
-                                _name: &'static str,
-                                variant_index: usize,
-                                _variant: &'static str,
-                                _len: usize)
-                                -> SerializeResult<()> {
-        // FIXME: once serde 0.9 is out
-        if variant_index > 255 {
-            return Err(Error::TooManyVariants);
-        }
-        self.write_u8(variant_index as u8)
-    }
-
-    #[inline] fn serialize_struct_variant_elt<V: Serialize>(&mut self,
-                                       _: &mut (),
-                                       _key: &'static str,
-                                       value: V)
-                                       -> SerializeResult<()> {
-        value.serialize(self)
-    }
-
-    #[inline] fn serialize_struct_variant_end(&mut self, _: ()) -> SerializeResult<()> {
-        Ok(())
-    }
-
-    #[inline] fn serialize_newtype_struct<T: Serialize>(&mut self, _name: &'static str, value: T) -> SerializeResult<()> {
-        value.serialize(self)
-    }
-
-    #[inline] fn serialize_newtype_variant<T: Serialize>(&mut self,
+     fn serialize_newtype_variant<T: Serialize + ?Sized>(self,
                                     _name: &'static str,
-                                    variant_index: usize,
+                                    variant_index: u32,
                                     _variant: &'static str,
-                                    value: T)
+                                    value: &T)
                                     -> SerializeResult<()> {
-        // FIXME: once serde 0.9 is out
         if variant_index > 255 {
+            debug_assert!(false, "too many enum variants: {}", _name);
             return Err(Error::TooManyVariants);
         }
         self.write_u8(variant_index as u8)?;
         value.serialize(self)
     }
 
-    #[inline] fn serialize_unit_variant(&mut self,
-                              _name: &'static str,
-                              variant_index: usize,
-                              _variant: &'static str)
-                              -> SerializeResult<()> {
-        self.write_usize(variant_index)
+     #[inline]
+     fn serialize_seq(self, len: Option<usize>) -> SerializeResult<Self> {
+        match len {
+            None => {
+                ns()
+            },
+            Some(len) => {
+                self.write_usize(len)?;
+                Ok(self)
+            }
+        }
     }
+
+     #[inline]
+     fn serialize_tuple(self, _len: usize) -> SerializeResult<Self> {
+        Ok(self)
+    }
+
+     #[inline]
+     fn serialize_tuple_struct(self, _name: &'static str, _len: usize) -> SerializeResult<Self> {
+        Ok(self)
+    }
+
+     #[inline]
+     fn serialize_tuple_variant(self,
+                               _name: &'static str,
+                               variant_index: u32,
+                               _variant: &'static str,
+                               _len: usize)
+                               -> SerializeResult<Self> {
+        if variant_index > 255 {
+            debug_assert!(false, "too many enum variants: {}", _name);
+            return Err(Error::TooManyVariants);
+        }
+        self.write_u8(variant_index as u8)?;
+        Ok(self)
+    }
+
+     fn serialize_map(self, _len: Option<usize>) -> SerializeResult<Self::SerializeMap> {
+        ns()
+    }
+
+     #[inline]
+     fn serialize_struct(self, _name: &'static str, _len: usize) -> SerializeResult<Self> {
+        Ok(self)
+    }
+
+     #[inline]
+     fn serialize_struct_variant(self,
+                                _name: &'static str,
+                                variant_index: u32,
+                                _variant: &'static str,
+                                _len: usize)
+                                -> SerializeResult<Self> {
+        if variant_index > 255 {
+            debug_assert!(false, "too many enum variants: {}", _name);
+            return Err(Error::TooManyVariants);
+        }
+        self.write_u8(variant_index as u8)?;
+        Ok(self)
+    }
+
+}
+
+impl<'b, 'a: 'b> serde::ser::SerializeSeq for &'b mut Serializer<'a> {
+    type Ok = ();
+    type Error = Error;
+
+     fn serialize_element<V: Serialize + ?Sized>(&mut self, value: &V) -> SerializeResult<()> {
+        value.serialize(&mut **self)
+    }
+    
+     #[inline]
+     fn end(self) -> SerializeResult<()> { Ok(()) }
+}
+
+impl<'b, 'a: 'b> serde::ser::SerializeTuple for &'b mut Serializer<'a> {
+    type Ok = ();
+    type Error = Error;
+
+     fn serialize_element<V: Serialize + ?Sized>(&mut self, value: &V) -> SerializeResult<()> {
+        value.serialize(&mut **self)
+    }
+
+     #[inline]
+     fn end(self) -> SerializeResult<()> { Ok(()) }
+}
+
+impl<'b, 'a: 'b> serde::ser::SerializeTupleStruct for &'b mut Serializer<'a> {
+    type Ok = ();
+    type Error = Error;
+
+    fn serialize_field<V: Serialize + ?Sized>(&mut self, value: &V) -> Result<(), Error> {
+        value.serialize(&mut **self)
+    }
+
+    #[inline]
+    fn end(self) -> Result<(), Error> { Ok(()) }
+}
+
+impl<'b, 'a: 'b> serde::ser::SerializeTupleVariant for &'b mut Serializer<'a> {
+    type Ok = ();
+    type Error = Error;
+
+    fn serialize_field<V: Serialize + ?Sized>(&mut self, value: &V) -> Result<(), Error> {
+        value.serialize(&mut **self)
+    }
+
+    #[inline]
+    fn end(self) -> Result<(), Error> { Ok(()) }
+}
+
+impl<'b, 'a: 'b> serde::ser::SerializeStruct for &'b mut Serializer<'a> {
+    type Ok = ();
+    type Error = Error;
+
+    fn serialize_field<V: Serialize + ?Sized>(&mut self, _: &'static str, value: &V) -> Result<(), Error> {
+        value.serialize(&mut **self)
+    }
+
+    #[inline]
+    fn end(self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl<'b, 'a: 'b> serde::ser::SerializeStructVariant for &'b mut Serializer<'a> {
+    type Ok = ();
+    type Error = Error;
+
+    fn serialize_field<V: Serialize + ?Sized>(&mut self, _: &'static str, value: &V) -> Result<(), Error> {
+        value.serialize(&mut **self)
+    }
+
+    #[inline]
+    fn end(self) -> Result<(), Error> { Ok(()) }
 }
 
 struct Deserializer<'a> {
@@ -453,16 +488,19 @@ struct Deserializer<'a> {
 }
 
 impl<'a> Deserializer<'a> {
-    #[inline] fn check_bounds(&self, len: usize) -> Result<(), Error> {
+    #[inline]
+     fn check_bounds(&self, len: usize) -> Result<(), Error> {
         if let Some(val) = self.idx.checked_add(len) {
             if val <= self.buf.len() {
                 return Ok(());
             }
         }
+        debug_assert!(false, "ran out of space deserializing value; fix your buffer size");
         Err(Error::EndOfStream)
     }
 
-    #[inline] fn read_u8(&mut self) -> Result<u8, Error> {
+     #[inline]
+     fn read_u8(&mut self) -> Result<u8, Error> {
         self.check_bounds(1)?;
         let val = unsafe {
             *self.buf.get_unchecked(self.idx)
@@ -471,7 +509,8 @@ impl<'a> Deserializer<'a> {
         Ok(val)
     }
 
-    #[inline] fn read_u16(&mut self) -> Result<u16, Error> {
+     #[inline]
+     fn read_u16(&mut self) -> Result<u16, Error> {
         self.check_bounds(2)?;
         let mut val;
         unsafe {
@@ -482,7 +521,8 @@ impl<'a> Deserializer<'a> {
         Ok(val)
     }
 
-    #[inline] fn read_u32(&mut self) -> Result<u32, Error> {
+     #[inline]
+     fn read_u32(&mut self) -> Result<u32, Error> {
         self.check_bounds(4)?;
         let mut val;
         unsafe {
@@ -495,7 +535,8 @@ impl<'a> Deserializer<'a> {
         Ok(val)
     }
 
-    #[inline] fn read_u64(&mut self) -> Result<u64, Error> {
+     #[inline]
+     fn read_u64(&mut self) -> Result<u64, Error> {
         self.check_bounds(8)?;
         let mut val;
         unsafe {
@@ -514,42 +555,38 @@ impl<'a> Deserializer<'a> {
 }
 
 
-struct SeqVisitor<'a, 'b: 'a> {
+struct SeqAccess<'a, 'b: 'a> {
     deserializer: &'a mut Deserializer<'b>,
     len: usize,
 }
 
-impl<'a, 'b: 'a> serde::de::SeqVisitor for SeqVisitor<'a, 'b> {
+impl<'a, 'b: 'a> serde::de::SeqAccess<'b> for SeqAccess<'a, 'b> {
     type Error = Error;
 
-    #[inline] fn visit<T: Deserialize>(&mut self) -> Result<Option<T>, Error> {
+     fn next_element_seed<V: DeserializeSeed<'b>>(&mut self, seed: V) -> Result<Option<V::Value>, Error> {
         if self.len > 0 {
             self.len -= 1;
-            Ok(Some(Deserialize::deserialize(self.deserializer)?))
+            Ok(Some(DeserializeSeed::deserialize(seed, &mut *self.deserializer)?))
         } else {
             Ok(None)
         }
     }
 
-    #[inline] fn end(&mut self) -> Result<(), Error> {
-        if self.len == 0 {
-            Ok(())
-        } else {
-            Err(Error::MoreElements)
-        }
-    }
+     fn size_hint(&self) -> Option<usize> {
+         Some(self.len)
+     }
 }
 
 type DeserializeResult<T> = Result<T, Error>;
 
-impl<'a> serde::Deserializer for Deserializer<'a> {
+impl<'b, 'de: 'b> serde::Deserializer<'de> for &'b mut Deserializer<'de> {
     type Error = Error;
 
-    #[inline] fn deserialize<V: Visitor>(&mut self, _visitor: V) -> DeserializeResult<V::Value> {
-        Err(Error::NotSupported)
+    fn deserialize_any<V: Visitor<'de>>(self, _visitor: V) -> DeserializeResult<V::Value> {
+        ns()
     }
 
-    #[inline] fn deserialize_bool<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+    fn deserialize_bool<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         let value: u8 = Deserialize::deserialize(self)?;
         match value {
             0 => visitor.visit_bool(false),
@@ -558,61 +595,49 @@ impl<'a> serde::Deserializer for Deserializer<'a> {
         }
     }
 
-    #[inline] fn deserialize_u8<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+    fn deserialize_u8<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_u8(self.read_u8()?)
     }
 
-    #[inline] fn deserialize_u16<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_u16<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_u16(self.read_u16()?)
     }
 
-    #[inline] fn deserialize_u32<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_u32<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_u32(self.read_u32()?)
     }
 
-    #[inline] fn deserialize_u64<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_u64<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_u64(self.read_u64()?)
     }
 
-    #[inline] fn deserialize_usize<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
-        visitor.visit_usize(self.read_u64()? as usize)
-    }
-
-    #[inline] fn deserialize_i8<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_i8<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_i8(self.read_u8()? as i8)
     }
 
-    #[inline] fn deserialize_i16<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_i16<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_i16(self.read_u16()? as i16)
     }
 
-    #[inline] fn deserialize_i32<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_i32<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_i32(self.read_u32()? as i32)
     }
 
-    #[inline] fn deserialize_i64<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_i64<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_i64(self.read_u64()? as i64)
     }
 
-    #[inline] fn deserialize_f32<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_f32<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_f32(unsafe { transmute(self.read_u32()?) })
     }
-    #[inline] fn deserialize_f64<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_f64<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         visitor.visit_f64(unsafe { transmute(self.read_u64()?) })
     }
 
-    #[inline] fn deserialize_isize<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
-        visitor.visit_isize(self.read_u64()? as isize)
-    }
-
-    #[inline] fn deserialize_unit<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
-        visitor.visit_unit()
-    }
-
-    #[inline] fn deserialize_char<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_char<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
         match char::from_utf8_slice(&self.buf[self.idx..]) {
             Ok((c, count)) => {
-                // this ought to be safe, if it weren't how did from_utf8_slice do its thing?
+                // this ought to be correct, if it weren't how did from_utf8_slice do its thing?
                 self.idx = self.idx.wrapping_add(count); 
                 visitor.visit_char(c)
             },
@@ -620,60 +645,24 @@ impl<'a> serde::Deserializer for Deserializer<'a> {
         }
     }
 
-    #[inline] fn deserialize_str<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
-        // decode len
-        let len: usize = Deserialize::deserialize(self)?;
-        self.check_bounds(len)?;
-        let slice = &self.buf[self.idx..self.idx + len];
-        match core::str::from_utf8(slice) {
-            Ok(s) => visitor.visit_str(s),
-            Err(_) => Err(Error::InvalidRepresentation),
-        }
+    fn deserialize_str<V: Visitor<'de>>(self, _visitor: V) -> DeserializeResult<V::Value> {
+        ns()
     }
 
-    #[inline] fn deserialize_string<V: Visitor>(&mut self, _visitor: V) -> DeserializeResult<V::Value> {
-        Err(Error::NotSupported) // FIXME: depend on std/collections optionally?
+    fn deserialize_string<V: Visitor<'de>>(self, _visitor: V) -> DeserializeResult<V::Value> {
+        ns()
     }
 
-    #[inline] fn deserialize_bytes<V: Visitor>(&mut self, visitor: V) -> DeserializeResult<V::Value> {
-        self.deserialize_seq(visitor)
+    fn deserialize_bytes<V: Visitor<'de>>(self, _visitor: V) -> DeserializeResult<V::Value> {
+        ns()
     }
 
-    #[inline] fn deserialize_enum<V: EnumVisitor>(&mut self,
-                           _enum: &'static str,
-                           _variants: &'static [&'static str],
-                           mut visitor: V)
-                           -> Result<V::Value, Error> {
-        visitor.visit(self)
+    fn deserialize_byte_buf<V: Visitor<'de>>(self, _visitor: V) -> DeserializeResult<V::Value> {
+        ns()
     }
 
-    #[inline] fn deserialize_tuple<V: Visitor>(&mut self, _len: usize, mut visitor: V) -> DeserializeResult<V::Value> {
-        struct TupleVisitor<'a, 'b: 'a>(&'a mut Deserializer<'b>);
-
-        impl<'a, 'b: 'a> serde::de::SeqVisitor for TupleVisitor<'a, 'b> {
-            type Error = Error;
-
-            #[inline] fn visit<T: Deserialize>(&mut self) -> Result<Option<T>, Error> {
-                Ok(Some(serde::Deserialize::deserialize(self.0)?))
-            }
-
-            #[inline] fn end(&mut self) -> Result<(), Error> {
-                Ok(())
-            }
-        }
-
-        visitor.visit_seq(TupleVisitor(self))
-    }
-
-    #[inline] fn deserialize_seq_fixed_size<V: Visitor>(&mut self, len: usize, mut visitor: V) -> DeserializeResult<V::Value> {
-        visitor.visit_seq(SeqVisitor {
-            deserializer: self,
-            len: len
-        })
-    }
-
-    #[inline] fn deserialize_option<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
-        let value: u8 = Deserialize::deserialize(self)?;
+     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
+        let value: u8 = Deserialize::deserialize(&mut *self)?;
         match value {
             0 => visitor.visit_none(),
             1 => visitor.visit_some(self),
@@ -681,46 +670,38 @@ impl<'a> serde::Deserializer for Deserializer<'a> {
         }
     }
 
-    #[inline] fn deserialize_seq<V: Visitor>(&mut self, mut visitor: V) -> DeserializeResult<V::Value> {
-        let len = Deserialize::deserialize(self)?;
+     fn deserialize_unit<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
+        visitor.visit_unit()
+    }
 
-        visitor.visit_seq(SeqVisitor {
+     fn deserialize_unit_struct<V: Visitor<'de>>(self,
+                                  _name: &'static str,
+                                  visitor: V)
+                                  -> DeserializeResult<V::Value> {
+        visitor.visit_unit()
+    }
+
+     fn deserialize_newtype_struct<V: Visitor<'de>>(self,
+                                     _name: &str,
+                                     visitor: V)
+                                     -> DeserializeResult<V::Value> {
+        visitor.visit_newtype_struct(self)
+    }
+
+     fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
+        let len = Deserialize::deserialize(&mut *self)?;
+
+        visitor.visit_seq(SeqAccess {
             deserializer: self,
             len: len,
         })
     }
 
-    #[inline] fn deserialize_map<V: Visitor>(&mut self, _visitor: V) -> DeserializeResult<V::Value> {
-        Err(Error::NotSupported) // FIXME: depend on std/collections optionally?
+     fn deserialize_tuple<V: Visitor<'de>>(self, len: usize, visitor: V) -> DeserializeResult<V::Value> {
+        visitor.visit_seq(SeqAccess { deserializer: self, len: len })
     }
 
-    #[inline] fn deserialize_struct<V: Visitor>(&mut self,
-                             _name: &str,
-                             fields: &'static [&'static str],
-                             visitor: V)
-                             -> DeserializeResult<V::Value> {
-        self.deserialize_tuple(fields.len(), visitor)
-    }
-
-    #[inline] fn deserialize_struct_field<V: Visitor>(&mut self, _visitor: V) -> DeserializeResult<V::Value> {
-        Err(Error::NotSupported)
-    }
-
-    #[inline] fn deserialize_newtype_struct<V: Visitor>(&mut self,
-                                     _name: &str,
-                                     mut visitor: V)
-                                     -> DeserializeResult<V::Value> {
-        visitor.visit_newtype_struct(self)
-    }
-
-    #[inline] fn deserialize_unit_struct<V: Visitor>(&mut self,
-                                  _name: &'static str,
-                                  mut visitor: V)
-                                  -> DeserializeResult<V::Value> {
-        visitor.visit_unit()
-    }
-
-    #[inline] fn deserialize_tuple_struct<V: Visitor>(&mut self,
+     fn deserialize_tuple_struct<V: Visitor<'de>>(self,
                                    _name: &'static str,
                                    len: usize,
                                    visitor: V)
@@ -728,36 +709,68 @@ impl<'a> serde::Deserializer for Deserializer<'a> {
         self.deserialize_tuple(len, visitor)
     }
 
-    #[inline] fn deserialize_ignored_any<V: Visitor>(&mut self, _visitor: V) -> DeserializeResult<V::Value> {
+     fn deserialize_map<V: Visitor<'de>>(self, _visitor: V) -> DeserializeResult<V::Value> {
         Err(Error::NotSupported)
+    }
+
+     fn deserialize_struct<V: Visitor<'de>>(self,
+                             _name: &str,
+                             fields: &'static [&'static str],
+                             visitor: V)
+                             -> DeserializeResult<V::Value> {
+        self.deserialize_tuple(fields.len(), visitor)
+    }
+
+     fn deserialize_enum<V: Visitor<'de>>(self,
+                           _enum: &'static str,
+                           _variants: &'static [&'static str],
+                           visitor: V)
+                           -> Result<V::Value, Error> {
+        visitor.visit_enum(self)
+    }
+
+    
+    fn deserialize_identifier<V: Visitor<'de>>(self, _visitor: V) -> DeserializeResult<V::Value> {
+        // not the panic because it seems noone cares about these?
+        Err(Error::NotSupported)
+    }
+
+     fn deserialize_ignored_any<V: Visitor<'de>>(self, _visitor: V) -> DeserializeResult<V::Value> {
+        ns()
     }
 }
 
-impl<'a> serde::de::VariantVisitor for Deserializer<'a> {
+impl<'b, 'de: 'b> serde::de::VariantAccess<'de> for &'b mut Deserializer<'de> {
     type Error = Error;
 
-    #[inline] fn visit_variant<V: Deserialize>(&mut self) -> Result<V, Error> {
-        let index: u8 = Deserialize::deserialize(self)?;
-        let mut deserializer = (index as usize).into_deserializer();
-        Ok(serde::Deserialize::deserialize(&mut deserializer)?)
-    }
-
-    #[inline] fn visit_unit(&mut self) -> Result<(), Error> {
+     fn unit_variant(self) -> Result<(), Error> {
         Ok(())
     }
 
-    #[inline] fn visit_newtype<T: Deserialize>(&mut self) -> Result<T, Error> {
-        serde::de::Deserialize::deserialize(self)
+     fn newtype_variant_seed<V: DeserializeSeed<'de>>(self, seed: V) -> DeserializeResult<V::Value> {
+        DeserializeSeed::deserialize(seed, self)
     }
 
-    #[inline] fn visit_tuple<V: Visitor>(&mut self, len: usize, visitor: V) -> Result<V::Value, Error> {
+     fn tuple_variant<V: Visitor<'de>>(self, len: usize, visitor: V) -> DeserializeResult<V::Value> {
         serde::de::Deserializer::deserialize_tuple(self, len, visitor)
     }
 
-    #[inline] fn visit_struct<V: Visitor>(&mut self,
+     fn struct_variant<V: Visitor<'de>>(self,
                        fields: &'static [&'static str],
                        visitor: V)
                        -> Result<V::Value, Error> {
         serde::de::Deserializer::deserialize_tuple(self, fields.len(), visitor)
     }
 }
+
+impl<'b, 'de: 'b> serde::de::EnumAccess<'de> for &'b mut Deserializer<'de> {
+    type Error = Error;
+    type Variant = Self;
+
+    fn variant_seed<V: DeserializeSeed<'de>>(self, seed: V) -> DeserializeResult<(V::Value, Self)> {
+        let x: u8 = Deserialize::deserialize(&mut *self)?;
+        let v = DeserializeSeed::deserialize(seed, (x as u32).into_deserializer())?;
+        Ok((v, self))
+    }
+}
+

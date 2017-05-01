@@ -15,7 +15,8 @@ extern crate quickcheck;
 
 extern crate ssmarshal;
 
-use serde::{Serialize, Deserialize};
+use serde::{Serialize};
+use serde::de::DeserializeOwned;
 
 use ssmarshal::{serialize, deserialize};
 
@@ -88,6 +89,7 @@ impl quickcheck::Arbitrary for Complex {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(C)]
 enum ComplexEnum {
     A,
     B(Simple),
@@ -129,9 +131,9 @@ impl quickcheck::Arbitrary for ComplexEnum {
     }
 }
 
-fn rt_val<T: Serialize + Deserialize + PartialEq+std::fmt::Debug>(val: &T) -> bool {
+fn rt_val<T: Serialize + DeserializeOwned + PartialEq+std::fmt::Debug>(val: &T) -> bool {
     let mut buf = vec![0; std::mem::size_of::<T>()];
-    serialize(&mut buf, &val).unwrap();
+    serialize(&mut buf, val).unwrap();
     let new_val: T = deserialize(&buf).unwrap().0;
     println!("\n\nOld: {:?}\nNew: {:?}", val, new_val);
     val == &new_val
