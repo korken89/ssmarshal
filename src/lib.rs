@@ -42,7 +42,7 @@ pub enum Error {
     NotSupported,
     ApplicationError(&'static str),
     #[cfg(not(feature = "std"))]
-    Custom(&'static str),
+    Custom,
     #[cfg(feature = "std")]
     Custom(String),
 }
@@ -52,8 +52,6 @@ impl core::fmt::Display for Error {
      fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         #[cfg(feature = "std")]
         use std::error::Error;
-        #[cfg(not(feature = "std"))]
-        use serde::error::Error;
 
         match self {
             &::Error::ApplicationError(s) => write!(f, "application error: {}", s),
@@ -64,15 +62,15 @@ impl core::fmt::Display for Error {
 
 #[cfg(not(feature = "std"))]
 impl serde::de::Error for Error {
-     fn custom<T: Into<&'static str>>(msg: T) -> Error {
-        Error::Custom(msg.into())
+     fn custom<T: Display>(_msg: T) -> Error {
+        Error::Custom
     }
 }
 
 #[cfg(not(feature = "std"))]
 impl serde::ser::Error for Error {
-     fn custom<T: Display>(msg: T) -> Error {
-        Error::Custom(format!("{}", msg))
+     fn custom<T: Display>(_msg: T) -> Error {
+        Error::Custom
     }
 }
 
@@ -91,7 +89,7 @@ impl serde::ser::Error for Error {
 }
 
 #[cfg(not(feature = "std"))]
-impl serde::error::Error for Error {
+impl Error {
      fn description(&self) -> &str {
         match self {
             &Error::EndOfStream => "end of stream reached but more data was needed",
@@ -100,7 +98,7 @@ impl serde::error::Error for Error {
             &Error::TooManyVariants => "too many variants, only up to 256 are supported",
             &Error::NotSupported => "feature not supported",
             &Error::ApplicationError(s) => s,
-            &Error::Custom(s) => s
+            &Error::Custom => "some custom error that couldn't be reported",
         }
     }
 }
@@ -406,6 +404,10 @@ impl<'b, 'a: 'b> serde::Serializer for &'b mut Serializer<'a> {
         Ok(self)
     }
 
+     #[cfg(not(feature = "std"))]
+     fn collect_str<T: Display + ?Sized>(self, _value: &T) -> SerializeResult<()> {
+         ns()
+     }
 }
 
 impl<'b, 'a: 'b> serde::ser::SerializeSeq for &'b mut Serializer<'a> {
