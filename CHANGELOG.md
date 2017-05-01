@@ -10,13 +10,8 @@ Planned features:
 - [added] random datatype-based testing
 - [removed] afl.rs based fuzz testing
 - [changed] expanded quickcheck-based testing to more interesting types
-
-Implemented features:
-
-## v0.99.0 (2017-05-01)
-
 - [changed] Ported to serde 1.0
-- [removed] Support for serializing values which can't be deserialized
+- [removed] Support for serializing values which can't be deserialized (slices etc)
 - [fixed] Documented the high-level details of the format and limitations.
 
 ## v0.0.1 (2017-01-03)

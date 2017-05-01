@@ -57,7 +57,9 @@ care about data evolution, I recommend using bincode.
 
 ## Testing
 
-This library was regularly fuzz tested with AFL for correct handling of
-arbitrary input. With the new version, that hasn't been conducted yet. I plan
-on updating to cargo-fuzz/LibFuzzer and significantly expanding the fuzzing
-test suite.
+The `roundtrip` test suite exercises almost all of the functionality of
+ssmarshal, with coverage over 95% (missing mostly some of the error cases for
+invalid/unsupported types).
+
+This library is extensively fuzz tested with `cargo-fuzz` (libFuzzer) before
+every release. See the `fuzz` directory for the scripts used.

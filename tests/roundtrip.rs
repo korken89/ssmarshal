@@ -50,13 +50,22 @@ struct I64(i64);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ISize(isize);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+struct F32(f32);
+
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+struct F64(f64);
+
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 struct Simple {
     a: u8,
     b: u16,
     c: u32,
     d: u64,
-    e: i8
+    e: i8,
+    f: f32,
+    g: u8,
+    h: f64,
 }
 
 impl quickcheck::Arbitrary for Simple {
@@ -67,15 +76,24 @@ impl quickcheck::Arbitrary for Simple {
             c: g.gen(),
             d: g.gen(),
             e: g.gen(),
+            f: g.gen(),
+            g: g.gen(),
+            h: g.gen(),
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+struct Unit;
+
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 struct Complex {
     a: Simple,
+    e: Unit,
     b: Simple,
-    c: [u8; 7]
+    c: [u8; 7],
+    d: (),
+    f: [Unit; 3],
 }
 
 impl quickcheck::Arbitrary for Complex {
@@ -84,11 +102,14 @@ impl quickcheck::Arbitrary for Complex {
             a: Simple::arbitrary(g),
             b: Simple::arbitrary(g),
             c: g.gen(),
+            d: (),
+            e: Unit,
+            f: [Unit; 3],
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 enum ComplexEnum {
     A,
@@ -131,6 +152,15 @@ impl quickcheck::Arbitrary for ComplexEnum {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+struct TupleStruct(u8, u64, Simple, Option<ComplexEnum>);
+
+impl quickcheck::Arbitrary for TupleStruct {
+    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> TupleStruct {
+        TupleStruct(g.gen(), g.gen(), quickcheck::Arbitrary::arbitrary(g), quickcheck::Arbitrary::arbitrary(g))
+    }
+}
+
 fn rt_val<T: Serialize + DeserializeOwned + PartialEq+std::fmt::Debug>(val: &T) -> bool {
     let mut buf = vec![0; std::mem::size_of::<T>()];
     serialize(&mut buf, val).unwrap();
@@ -151,6 +181,11 @@ fn rt_complex(val: Complex) -> bool {
 
 #[quickcheck]
 fn rt_complexenum(val: ComplexEnum) -> bool {
+    rt_val(&val)
+}
+
+#[quickcheck]
+fn rt_tuplestruct(val: TupleStruct) -> bool {
     rt_val(&val)
 }
 
@@ -181,6 +216,8 @@ rt! {
     (rt_u64, u64),
     (rt_usize, usize),
     (rt_isize, isize),
+    (rt_f32, f32),
+    (rt_f64, f64),
     (rt_tp1, (u8, u8, u8)),
     (rt_tp2, (u8, i16, u8)),
     (rt_tp3, (u8, i16, u8)),
@@ -196,5 +233,7 @@ rt_wrap! {
     (rt_U8,  u8 , U8),
     (rt_U16, u16, U16),
     (rt_U32, u32, U32),
-    (rt_U64, u64, U64)
+    (rt_U64, u64, U64),
+    (rt_F32, f32, F32),
+    (rt_F64, f64, F64)
 }
