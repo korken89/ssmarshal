@@ -21,8 +21,12 @@ These sorts of types are not supported:
 - Types containing references or pointers
 - Enums with more than 256 variants
 
-All enums MUST be `#[repr(C)]` in order for the size variant to be upheld.
+All enums MUST be `#[repr(C)]` in order for the size invariant to be upheld.
 Note that this excludes using `Option`, especially with `NonZero` types!
+You can use this crate with non-`#[repr(C)]` enums, but you should thoroughly
+test (I recommend quickcheck, see [the tests](https://gitlab.com/robigalia/ssmarshal/blob/master/tests/roundtrip.rs)
+for an example) de/serializing values of that type to be assured the size
+invariant holds for the type.
 
 ## Details of the format
 
@@ -39,7 +43,7 @@ quick to en/decode.
 
 There is no padding.
 
-As you can see, this format is not self-describing. To successfully
+As you might see, this format is not self-describing. To successfully
 deserialize a value, the exact layout must be known ahead-of-time.
 
 ## Alternatives
