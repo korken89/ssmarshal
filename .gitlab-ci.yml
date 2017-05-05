@@ -5,6 +5,9 @@ build:
         - "xargo build --target arm-sel4-robigalia --no-default-features"
         - "cargo test"
         - "cargo test --release"
+        - "kcov --exclude-pattern=/.cargo,/usr/lib --verify target/cov/ target/debug/roundtrip-*[^\\.d]"
+        - "bash <(curl -s https://codecov.io/bash) -t 84321081-ebe2-447a-bdf1-a69eee2bdcf7"
+
 verify_signatures:
     image: ubuntu:16.10
     script:
