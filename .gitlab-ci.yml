@@ -1,5 +1,9 @@
 build:
     image: registry.gitlab.com/robigalia/runner:latest
+    cache:
+        key: $CACHE_KEY
+        paths:
+            - /root/.cargo
     script: 
         - "xargo build --target i686-sel4-robigalia --no-default-features"
         - "xargo build --target arm-sel4-robigalia --no-default-features"
