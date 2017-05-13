@@ -7,6 +7,7 @@ build:
     script: 
         - "xargo build --target i686-sel4-robigalia --no-default-features"
         - "xargo build --target arm-sel4-robigalia --no-default-features"
+        - "cargo build --no-default-features"
         - "cargo test"
         - "cargo test --release"
 #        - "kcov --exclude-pattern=/.cargo,/usr/lib --verify target/cov/ target/debug/roundtrip-*[^\\.d]"

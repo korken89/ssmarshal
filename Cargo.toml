@@ -6,7 +6,7 @@
 # except according to those terms.
 [package]
 name = "ssmarshal"
-version = "0.0.1"
+version = "1.0.0"
 authors = ["Corey Richardson <corey@octayn.net>"]
 description = "Stupid simple value-only marshaling using serde"
 documentation = "https://docs.rs/ssmarshal"
@@ -20,8 +20,7 @@ std = ["serde/std"]
 
 [dependencies]
 serde = { version = "1.0", default-features = false }
-# ugh. FIXME eventually.
-encode_unicode = { version = "0.2", default-features = false, features = ["no_std"] }
+encode_unicode = { version = "0.3", default-features = false }
 
 [dev-dependencies]
 quickcheck = "0.4"
