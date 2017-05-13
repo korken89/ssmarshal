@@ -18,6 +18,7 @@ use serde::{Serialize, Deserialize};
 use serde::de::{Visitor, DeserializeSeed, DeserializeOwned, IntoDeserializer};
 //use serde::de::value::ValueDeserializer;
 use encode_unicode::CharExt;
+use encode_unicode::Utf8Char;
 
 use core::fmt::Display;
 
@@ -281,8 +282,14 @@ impl<'b, 'a: 'b> serde::Serializer for &'b mut Serializer<'a> {
     }
 
      fn serialize_char(self, c: char) -> SerializeResult<()> {
-        self.check_bounds(c.len_utf8())?;
-        self.idx += c.to_utf8_slice(&mut self.buf[self.idx..]);
+        let (arr, sz) = c.to_utf8_array();
+        self.check_bounds(sz)?;
+        for (i, c) in arr[..sz].iter().enumerate() {
+            unsafe {
+                *self.buf.get_unchecked_mut(self.idx + i) = *c;
+            }
+        }
+        self.idx += sz;
         Ok(())
     }
 
@@ -636,11 +643,11 @@ impl<'b, 'de: 'b> serde::Deserializer<'de> for &'b mut Deserializer<'de> {
     }
 
      fn deserialize_char<V: Visitor<'de>>(self, visitor: V) -> DeserializeResult<V::Value> {
-        match char::from_utf8_slice(&self.buf[self.idx..]) {
+        match Utf8Char::from_slice_start(&self.buf[self.idx..]) {
             Ok((c, count)) => {
-                // this ought to be correct, if it weren't how did from_utf8_slice do its thing?
+                // this ought to be correct, if it weren't how did from_slice_start do its thing?
                 self.idx = self.idx.wrapping_add(count); 
-                visitor.visit_char(c)
+                visitor.visit_char(c.to_char())
             },
             Err(_) => Err(Error::InvalidRepresentation),
         }
