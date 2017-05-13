@@ -2,9 +2,7 @@
 
 This project follows semantic versioning.
 
-## Unreleased v1.0.0 (2017-xx-xx)
-
-Planned features:
+## v1.0.0 (2017-05-13)
 
 - [added] `cargo-fuzz` based fuzz testing
 - [added] random datatype-based testing
