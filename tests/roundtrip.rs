@@ -15,10 +15,10 @@ extern crate quickcheck;
 
 extern crate ssmarshal;
 
-use serde::{Serialize};
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
-use ssmarshal::{serialize, deserialize};
+use ssmarshal::{deserialize, serialize};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct U8(u8);
@@ -117,37 +117,31 @@ enum ComplexEnum {
     C(u8, u16),
     D(isize),
     E {
-        foo: Simple
+        foo: Simple,
     },
     F {
         bar: Complex,
         baz: Simple,
-        qux: char
-    }
+        qux: char,
+    },
 }
 
 impl quickcheck::Arbitrary for ComplexEnum {
     fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> ComplexEnum {
         match g.gen_range(0, 6) {
-            0 => {
-                ComplexEnum::A
+            0 => ComplexEnum::A,
+            1 => ComplexEnum::B(Simple::arbitrary(g)),
+            2 => ComplexEnum::C(g.gen(), g.gen()),
+            3 => ComplexEnum::D(g.gen()),
+            4 => ComplexEnum::E {
+                foo: Simple::arbitrary(g),
             },
-            1 => {
-                ComplexEnum::B(Simple::arbitrary(g))
+            5 => ComplexEnum::F {
+                bar: Complex::arbitrary(g),
+                baz: Simple::arbitrary(g),
+                qux: g.gen(),
             },
-            2 => {
-                ComplexEnum::C(g.gen(), g.gen())
-            },
-            3 => {
-                ComplexEnum::D(g.gen())
-            },
-            4 => {
-                ComplexEnum::E { foo: Simple::arbitrary(g) }
-            },
-            5 => {
-                ComplexEnum::F { bar: Complex::arbitrary(g), baz: Simple::arbitrary(g), qux: g.gen() }
-            },
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -157,11 +151,16 @@ struct TupleStruct(u8, u64, Simple, Option<ComplexEnum>);
 
 impl quickcheck::Arbitrary for TupleStruct {
     fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> TupleStruct {
-        TupleStruct(g.gen(), g.gen(), quickcheck::Arbitrary::arbitrary(g), quickcheck::Arbitrary::arbitrary(g))
+        TupleStruct(
+            g.gen(),
+            g.gen(),
+            quickcheck::Arbitrary::arbitrary(g),
+            quickcheck::Arbitrary::arbitrary(g),
+        )
     }
 }
 
-fn rt_val<T: Serialize + DeserializeOwned + PartialEq+std::fmt::Debug>(val: &T) -> bool {
+fn rt_val<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(val: &T) -> bool {
     let mut buf = vec![0; std::mem::size_of::<T>()];
     serialize(&mut buf, val).unwrap();
     let new_val: T = deserialize(&buf).unwrap().0;
